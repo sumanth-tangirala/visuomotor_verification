@@ -29,4 +29,5 @@ where = ["src"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
-addopts = "-ra"
+addopts = "-ra --strict-markers"
+markers = ["slow: marks tests that take >1s (deselect with -m 'not slow')"]
