@@ -4,6 +4,7 @@ import random
 import subprocess
 
 import numpy as np
+from omegaconf import OmegaConf
 import pytest
 import torch
 
@@ -231,3 +232,62 @@ def test_clean_tree_passes_deterministic(tmp_path) -> None:
     _make_git_repo(tmp_path)
     cfg = RunConfig(mode=RunMode.DETERMINISTIC, seeds=Seeds(master=1))
     seed_all(cfg, repo_root=tmp_path)  # must not raise
+
+
+def test_from_hydra_deterministic() -> None:
+    cfg = OmegaConf.create(
+        {
+            "run": {
+                "mode": "deterministic",
+                "allow_dirty": False,
+                "seeds": {"master": 42, "sim": 999},
+            }
+        }
+    )
+    rc = RunConfig.from_hydra(cfg)
+    assert rc.mode is RunMode.DETERMINISTIC
+    assert rc.allow_dirty is False
+    assert rc.seeds.master == 42
+    assert rc.seeds.sim == 999
+    assert rc.seeds.policy is None  # not in config => None
+
+
+def test_from_hydra_stochastic_minimal() -> None:
+    cfg = OmegaConf.create({"run": {"mode": "stochastic", "seeds": {}}})
+    rc = RunConfig.from_hydra(cfg)
+    assert rc.mode is RunMode.STOCHASTIC
+    assert rc.seeds.master is None
+
+
+def test_from_hydra_mixed_with_partial_seeds() -> None:
+    cfg = OmegaConf.create(
+        {"run": {"mode": "mixed", "seeds": {"sim": 7, "cuda_strict": True}}}
+    )
+    rc = RunConfig.from_hydra(cfg)
+    assert rc.mode is RunMode.MIXED
+    assert rc.seeds.sim == 7
+    assert rc.seeds.cuda_strict is True
+
+
+def test_from_hydra_rejects_null_run() -> None:
+    cfg = OmegaConf.create({"run": None})
+    with pytest.raises(ValueError, match="cfg.run must not be null"):
+        RunConfig.from_hydra(cfg)
+
+
+def test_from_hydra_rejects_missing_run() -> None:
+    cfg = OmegaConf.create({})
+    # OmegaConf surfaces missing keys as ConfigAttributeError, a subclass of
+    # AttributeError. We don't catch and re-raise — just confirm the error is loud.
+    import omegaconf
+
+    with pytest.raises((AttributeError, omegaconf.errors.ConfigAttributeError)):
+        RunConfig.from_hydra(cfg)
+
+
+def test_from_hydra_rejects_invalid_mode() -> None:
+    cfg = OmegaConf.create(
+        {"run": {"mode": "not_a_real_mode", "seeds": {}}}
+    )
+    with pytest.raises(ValueError):
+        RunConfig.from_hydra(cfg)

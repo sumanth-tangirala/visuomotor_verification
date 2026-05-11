@@ -17,6 +17,7 @@ from pathlib import Path
 
 import numpy as np
 import torch
+from omegaconf import DictConfig
 
 from visuomotor_verification.core import git_info
 
@@ -44,6 +45,37 @@ class RunConfig:
     mode: RunMode
     seeds: Seeds
     allow_dirty: bool = False
+
+    @classmethod
+    def from_hydra(cls, cfg: "DictConfig") -> "RunConfig":
+        """Build a RunConfig from a Hydra/OmegaConf DictConfig.
+
+        Expects `cfg.run.mode`, `cfg.run.seeds` (with any subset of fields),
+        and optional `cfg.run.allow_dirty`.
+
+        Raises:
+            ValueError: if `cfg.run` is missing or null, or `cfg.run.mode` is not
+                a valid RunMode value.
+        """
+        run = cfg.run
+        if run is None:
+            raise ValueError("cfg.run must not be null")
+        seeds_cfg = run.get("seeds", {}) or {}
+        seeds = Seeds(
+            master=seeds_cfg.get("master"),
+            sim=seeds_cfg.get("sim"),
+            policy=seeds_cfg.get("policy"),
+            torch=seeds_cfg.get("torch"),
+            numpy=seeds_cfg.get("numpy"),
+            python=seeds_cfg.get("python"),
+            dataloader=seeds_cfg.get("dataloader"),
+            cuda_strict=bool(seeds_cfg.get("cuda_strict", False)),
+        )
+        return cls(
+            mode=RunMode(run.mode),
+            seeds=seeds,
+            allow_dirty=bool(run.get("allow_dirty", False)),
+        )
 
 
 class DirtyTreeError(RuntimeError):
