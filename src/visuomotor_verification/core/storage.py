@@ -26,6 +26,11 @@ def mint_run_id(experiment_name: str, *, now: _dt.datetime | None = None) -> str
     """Build `<experiment_name>-<YYYY-MM-DD>_<HH-MM-SS>`.
 
     `experiment_name` must be a non-empty path-safe slug (alnum, `_`, `-`, `.`).
+
+    Note: production scripts get their run_id from Hydra's `${now:...}`
+    interpolation in `hydra.run.dir` (see `configs/*.yaml`), not from this
+    function. `mint_run_id` is for callers that need to build paths
+    programmatically outside a Hydra app (tests, ad-hoc helpers).
     """
     if not experiment_name:
         raise ValueError("experiment_name must be non-empty")
