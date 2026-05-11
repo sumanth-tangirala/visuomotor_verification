@@ -55,3 +55,126 @@ def test_derive_seed_known_value() -> None:
     # be aware that all previously-deterministic runs will now produce different
     # data with the same master seed.
     assert derive_seed(42, "sim") == 2792115813
+
+
+import random
+
+import numpy as np
+import torch
+
+from visuomotor_verification.core.determinism import resolve_seeds, seed_all
+
+
+def test_resolve_seeds_deterministic_fills_unset() -> None:
+    cfg = RunConfig(mode=RunMode.DETERMINISTIC, seeds=Seeds(master=42))
+    resolved = resolve_seeds(cfg)
+    assert resolved.master == 42
+    # Every component seed should be filled deterministically.
+    for comp in ["sim", "policy", "torch", "numpy", "python", "dataloader"]:
+        v = getattr(resolved, comp)
+        assert v is not None, f"{comp} should be derived in DETERMINISTIC mode"
+        assert v == derive_seed(42, comp)
+
+
+def test_resolve_seeds_deterministic_respects_explicit_override() -> None:
+    cfg = RunConfig(
+        mode=RunMode.DETERMINISTIC,
+        seeds=Seeds(master=42, sim=999),
+    )
+    resolved = resolve_seeds(cfg)
+    assert resolved.sim == 999
+    assert resolved.policy == derive_seed(42, "policy")
+
+
+def test_resolve_seeds_stochastic_clears_all() -> None:
+    cfg = RunConfig(
+        mode=RunMode.STOCHASTIC,
+        seeds=Seeds(master=42, sim=999),  # explicit values should be ignored
+    )
+    with pytest.warns(UserWarning, match="STOCHASTIC mode ignores"):
+        resolved = resolve_seeds(cfg)
+    assert resolved.master is None
+    assert resolved.sim is None
+    assert resolved.policy is None
+
+
+def test_resolve_seeds_mixed_only_uses_explicit() -> None:
+    cfg = RunConfig(
+        mode=RunMode.MIXED,
+        seeds=Seeds(sim=7),
+    )
+    resolved = resolve_seeds(cfg)
+    assert resolved.sim == 7
+    assert resolved.policy is None  # not set => not seeded
+    assert resolved.torch is None
+
+
+def test_resolve_seeds_deterministic_requires_master() -> None:
+    cfg = RunConfig(mode=RunMode.DETERMINISTIC, seeds=Seeds())
+    with pytest.raises(ValueError, match="master"):
+        resolve_seeds(cfg)
+
+
+def test_seed_all_reproducible_python_random() -> None:
+    cfg = RunConfig(mode=RunMode.DETERMINISTIC, seeds=Seeds(master=42))
+    # Skip the git-cleanliness gate for this test by using a non-repo cwd.
+    seed_all(cfg, repo_root=None)
+    a = [random.random() for _ in range(5)]
+    seed_all(cfg, repo_root=None)
+    b = [random.random() for _ in range(5)]
+    assert a == b
+
+
+def test_seed_all_reproducible_numpy() -> None:
+    cfg = RunConfig(mode=RunMode.DETERMINISTIC, seeds=Seeds(master=42))
+    seed_all(cfg, repo_root=None)
+    a = np.random.rand(5).tolist()
+    seed_all(cfg, repo_root=None)
+    b = np.random.rand(5).tolist()
+    assert a == b
+
+
+def test_seed_all_reproducible_torch() -> None:
+    cfg = RunConfig(mode=RunMode.DETERMINISTIC, seeds=Seeds(master=42))
+    seed_all(cfg, repo_root=None)
+    a = torch.randn(5).tolist()
+    seed_all(cfg, repo_root=None)
+    b = torch.randn(5).tolist()
+    assert a == b
+
+
+def test_seed_all_idempotent_under_same_config() -> None:
+    cfg = RunConfig(mode=RunMode.DETERMINISTIC, seeds=Seeds(master=7))
+    seed_all(cfg, repo_root=None)
+    seed_all(cfg, repo_root=None)  # second call must not raise
+
+
+def test_seed_all_stochastic_runs_without_master() -> None:
+    cfg = RunConfig(mode=RunMode.STOCHASTIC, seeds=Seeds())
+    seed_all(cfg, repo_root=None)  # must not raise
+
+
+def test_seed_all_mixed_reproducible_for_explicit_seeds() -> None:
+    cfg = RunConfig(mode=RunMode.MIXED, seeds=Seeds(torch=99))
+    seed_all(cfg, repo_root=None)
+    a = torch.randn(5).tolist()
+    seed_all(cfg, repo_root=None)
+    b = torch.randn(5).tolist()
+    assert a == b
+
+
+def test_seed_all_returns_resolved_seeds() -> None:
+    cfg = RunConfig(mode=RunMode.DETERMINISTIC, seeds=Seeds(master=42))
+    resolved = seed_all(cfg, repo_root=None)
+    assert resolved.master == 42
+    assert resolved.torch == derive_seed(42, "torch")
+    assert resolved.sim == derive_seed(42, "sim")
+
+
+def test_resolve_seeds_stochastic_does_not_warn_on_cuda_strict_only() -> None:
+    cfg = RunConfig(mode=RunMode.STOCHASTIC, seeds=Seeds(cuda_strict=True))
+    import warnings as _w
+    with _w.catch_warnings():
+        _w.simplefilter("error")  # turn any warning into an exception
+        resolved = resolve_seeds(cfg)
+    assert resolved.cuda_strict is True

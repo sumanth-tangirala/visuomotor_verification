@@ -9,8 +9,14 @@ See docs/superpowers/specs/2026-05-11-foundations-design.md §5 for the design.
 from __future__ import annotations
 
 import hashlib
+import random
+import warnings
 from dataclasses import dataclass
 from enum import Enum
+from pathlib import Path
+
+import numpy as np
+import torch
 
 
 class RunMode(str, Enum):
@@ -48,3 +54,82 @@ def derive_seed(master: int, component: str) -> int:
         f"{master}:{component}".encode(), digest_size=8
     ).digest()
     return int.from_bytes(digest, "big") & 0xFFFFFFFF
+
+
+_COMPONENTS = ("sim", "policy", "torch", "numpy", "python", "dataloader")
+
+
+def resolve_seeds(cfg: RunConfig) -> Seeds:
+    """Return a Seeds object with every field that *will be used* filled in.
+
+    - DETERMINISTIC: all unset fields are derived from master. `master` is required.
+    - MIXED: only explicitly-set fields are honored; unset ones stay None.
+    - STOCHASTIC: every field is forced to None; warn if any was explicitly set.
+    """
+    if cfg.mode is RunMode.DETERMINISTIC:
+        if cfg.seeds.master is None:
+            raise ValueError(
+                "RunMode.DETERMINISTIC requires seeds.master to be set"
+            )
+        derived = {
+            comp: (
+                getattr(cfg.seeds, comp)
+                if getattr(cfg.seeds, comp) is not None
+                else derive_seed(cfg.seeds.master, comp)
+            )
+            for comp in _COMPONENTS
+        }
+        return Seeds(master=cfg.seeds.master, cuda_strict=cfg.seeds.cuda_strict, **derived)
+
+    if cfg.mode is RunMode.MIXED:
+        return cfg.seeds  # already has only-explicit semantics
+
+    # STOCHASTIC
+    explicit = [
+        c for c in (("master",) + _COMPONENTS) if getattr(cfg.seeds, c) is not None
+    ]
+    if explicit:
+        warnings.warn(
+            "STOCHASTIC mode ignores explicitly-set seeds: "
+            f"{explicit}. This is almost certainly a config bug.",
+            stacklevel=2,
+        )
+    return Seeds(cuda_strict=cfg.seeds.cuda_strict)
+
+
+def seed_all(cfg: RunConfig, repo_root: Path | None) -> Seeds:
+    """Seed every global RNG source according to `cfg`. Returns the resolved Seeds.
+
+    The git-cleanliness gate (see §5.7 of the foundations spec) is enforced
+    here when `repo_root` is not None. Pass `repo_root=None` only in tests
+    that exercise pure seeding behavior outside of a repo context.
+
+    This is the ONLY function that should touch torch.manual_seed, np.random.seed,
+    random.seed, or cuDNN flags.
+    """
+    # Note: git gate is added in a later task.
+    resolved = resolve_seeds(cfg)
+
+    if resolved.python is not None:
+        random.seed(resolved.python)
+    if resolved.numpy is not None:
+        np.random.seed(resolved.numpy)
+    if resolved.torch is not None:
+        torch.manual_seed(resolved.torch)
+        if torch.cuda.is_available():
+            torch.cuda.manual_seed_all(resolved.torch)
+
+    # cuDNN flags
+    strict_cuda = cfg.mode is RunMode.DETERMINISTIC or (
+        cfg.mode is RunMode.MIXED and resolved.cuda_strict
+    )
+    if strict_cuda:
+        torch.use_deterministic_algorithms(True)
+        torch.backends.cudnn.deterministic = True
+        torch.backends.cudnn.benchmark = False
+    else:
+        torch.use_deterministic_algorithms(False)
+        torch.backends.cudnn.deterministic = False
+        torch.backends.cudnn.benchmark = True
+
+    return resolved
