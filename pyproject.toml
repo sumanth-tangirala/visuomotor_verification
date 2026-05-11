@@ -1,0 +1,32 @@
+[build-system]
+requires = ["setuptools>=64", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "visuomotor_verification"
+version = "0.0.1"
+description = "Research on visuomotor verification: training verifiers that predict policy success/failure from trajectories."
+readme = "README.md"
+requires-python = ">=3.11"
+dependencies = [
+    "mani_skill",
+    "hydra-core>=1.3",
+    "omegaconf>=2.3",
+    "numpy",
+    "h5py",
+    "tensorboard",
+    "wandb",
+    "tqdm",
+    "diffusers",
+    "einops",
+]
+
+[project.optional-dependencies]
+dev = ["pytest>=7", "pytest-xdist"]
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-ra"
