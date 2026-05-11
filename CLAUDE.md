@@ -27,7 +27,7 @@ instantiated via Hydra `_target_`.
 Every phase entry-point script (`scripts/*.py`) calls `prologue(cfg, script_name=...)`
 from `scripts/_common.py`, which runs the standard sequence:
 `RunConfig.from_hydra(cfg)` → `git_info.collect(REPO_ROOT)` → `seed_all(run_cfg, repo_root=REPO_ROOT, git_info_cache=info)` → write `metadata.json`.
-**Nothing else in the codebase touches global RNGs or cuDNN flags.**
+**Nothing else in our project-owned code touches global RNGs or cuDNN flags.** The vendored ManiSkill diffusion-policy baseline at `src/visuomotor_verification/policy/diffusion_policy/` does call `random.seed`/`np.random.seed`/`torch.manual_seed`/cuDNN flags inside its own `train.py`/`utils.py`, but the adapter at `policy/diffusion_policy/adapter.py` is not yet implemented — those vendored RNG calls are dead code from our perspective until the adapter PR lands. The adapter PR will route the vendored seeding through our `seed_all`.
 Components that have their own RNG receive a component seed via constructor
 argument and create a local `torch.Generator` / `np.random.Generator`.
 
