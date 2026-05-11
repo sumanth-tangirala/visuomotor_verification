@@ -56,6 +56,10 @@ def prologue(cfg: DictConfig, *, script_name: str) -> Path:
                 "cuda_strict": resolved_seeds.cuda_strict,
             },
         },
+        # Input artifact paths this run consumed. Stub-empty for now; scripts
+        # that consume upstream artifacts (e.g. collect_trajectories.py reading
+        # a policy checkpoint) will populate this in the implementation PR.
+        "input_artifacts": {},
         "resolved_config": OmegaConf.to_container(cfg, resolve=True),
     }
     if info["dirty"]:

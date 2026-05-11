@@ -61,3 +61,5 @@ def test_stub_writes_metadata(script: str, extra: list[str], tmp_path: Path) -> 
     assert payload["script"] == script
     assert "experiment_name" in payload
     assert payload["run_config"]["mode"] == "stochastic"
+    assert "input_artifacts" in payload
+    assert payload["input_artifacts"] == {}
