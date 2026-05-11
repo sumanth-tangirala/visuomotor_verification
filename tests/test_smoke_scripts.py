@@ -28,6 +28,7 @@ def _run_script(script: str, tmp_path: Path, extra: list[str]) -> tuple[Path, in
     return tmp_path, result.returncode, result.stdout + result.stderr
 
 
+@pytest.mark.slow
 @pytest.mark.parametrize(
     "script,extra",
     [
