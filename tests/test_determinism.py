@@ -1,12 +1,20 @@
 from __future__ import annotations
 
+import random
+import subprocess
+
+import numpy as np
 import pytest
+import torch
 
 from visuomotor_verification.core.determinism import (
+    DirtyTreeError,
     RunConfig,
     RunMode,
     Seeds,
     derive_seed,
+    resolve_seeds,
+    seed_all,
 )
 
 
@@ -55,14 +63,6 @@ def test_derive_seed_known_value() -> None:
     # be aware that all previously-deterministic runs will now produce different
     # data with the same master seed.
     assert derive_seed(42, "sim") == 2792115813
-
-
-import random
-
-import numpy as np
-import torch
-
-from visuomotor_verification.core.determinism import resolve_seeds, seed_all
 
 
 def test_resolve_seeds_deterministic_fills_unset() -> None:
@@ -178,3 +178,56 @@ def test_resolve_seeds_stochastic_does_not_warn_on_cuda_strict_only() -> None:
         _w.simplefilter("error")  # turn any warning into an exception
         resolved = resolve_seeds(cfg)
     assert resolved.cuda_strict is True
+
+
+def _make_git_repo(path):
+    subprocess.run(["git", "init", "-q", "-b", "main"], cwd=path, check=True)
+    subprocess.run(["git", "config", "user.email", "t@t.com"], cwd=path, check=True)
+    subprocess.run(["git", "config", "user.name", "t"], cwd=path, check=True)
+    subprocess.run(["git", "config", "commit.gpgsign", "false"], cwd=path, check=True)
+    (path / "a.txt").write_text("hello\n")
+    subprocess.run(["git", "add", "a.txt"], cwd=path, check=True)
+    subprocess.run(["git", "commit", "-q", "-m", "init"], cwd=path, check=True)
+
+
+def test_dirty_tree_blocks_deterministic(tmp_path) -> None:
+    _make_git_repo(tmp_path)
+    (tmp_path / "a.txt").write_text("dirty\n")
+    cfg = RunConfig(mode=RunMode.DETERMINISTIC, seeds=Seeds(master=1))
+    with pytest.raises(DirtyTreeError):
+        seed_all(cfg, repo_root=tmp_path)
+
+
+def test_dirty_tree_allowed_with_allow_dirty(tmp_path) -> None:
+    _make_git_repo(tmp_path)
+    (tmp_path / "a.txt").write_text("dirty\n")
+    cfg = RunConfig(
+        mode=RunMode.DETERMINISTIC,
+        seeds=Seeds(master=1),
+        allow_dirty=True,
+    )
+    # allow_dirty bypasses the raise but still warns (run is not SHA-reproducible).
+    with pytest.warns(UserWarning, match="dirty"):
+        seed_all(cfg, repo_root=tmp_path)
+
+
+def test_dirty_tree_warns_in_stochastic(tmp_path) -> None:
+    _make_git_repo(tmp_path)
+    (tmp_path / "a.txt").write_text("dirty\n")
+    cfg = RunConfig(mode=RunMode.STOCHASTIC, seeds=Seeds())
+    with pytest.warns(UserWarning, match="dirty"):
+        seed_all(cfg, repo_root=tmp_path)
+
+
+def test_dirty_tree_warns_in_mixed(tmp_path) -> None:
+    _make_git_repo(tmp_path)
+    (tmp_path / "a.txt").write_text("dirty\n")
+    cfg = RunConfig(mode=RunMode.MIXED, seeds=Seeds())
+    with pytest.warns(UserWarning, match="dirty"):
+        seed_all(cfg, repo_root=tmp_path)
+
+
+def test_clean_tree_passes_deterministic(tmp_path) -> None:
+    _make_git_repo(tmp_path)
+    cfg = RunConfig(mode=RunMode.DETERMINISTIC, seeds=Seeds(master=1))
+    seed_all(cfg, repo_root=tmp_path)  # must not raise

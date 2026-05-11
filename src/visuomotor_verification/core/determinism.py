@@ -18,6 +18,8 @@ from pathlib import Path
 import numpy as np
 import torch
 
+from visuomotor_verification.core import git_info
+
 
 class RunMode(str, Enum):
     DETERMINISTIC = "deterministic"
@@ -42,6 +44,10 @@ class RunConfig:
     mode: RunMode
     seeds: Seeds
     allow_dirty: bool = False
+
+
+class DirtyTreeError(RuntimeError):
+    """Raised when a DETERMINISTIC run is attempted in a dirty git tree."""
 
 
 def derive_seed(master: int, component: str) -> int:
@@ -107,7 +113,24 @@ def seed_all(cfg: RunConfig, repo_root: Path | None) -> Seeds:
     This is the ONLY function that should touch torch.manual_seed, np.random.seed,
     random.seed, or cuDNN flags.
     """
-    # Note: git gate is added in a later task.
+    if repo_root is not None:
+        info = git_info.collect(repo_root)
+        if info["dirty"]:
+            if cfg.mode is RunMode.DETERMINISTIC and not cfg.allow_dirty:
+                raise DirtyTreeError(
+                    "RunMode.DETERMINISTIC refuses to run in a dirty tree. "
+                    "Commit or stash your changes, or set run.allow_dirty=true "
+                    "explicitly (the run will record `git_diff` in metadata.json "
+                    "regardless)."
+                )
+            warnings.warn(
+                f"Working tree is dirty (mode={cfg.mode.value}); "
+                "the run will proceed but git_sha will not uniquely identify "
+                "the code that ran. The diff is captured in metadata.json.",
+                UserWarning,
+                stacklevel=2,
+            )
+
     resolved = resolve_seeds(cfg)
 
     if resolved.python is not None:
