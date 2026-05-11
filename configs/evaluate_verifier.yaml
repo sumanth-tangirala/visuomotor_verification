@@ -11,6 +11,6 @@ rollouts_run: ???
 
 hydra:
   run:
-    dir: ${storage.root}/experiments/verifier/${task.name}/${verifier.name}/${experiment_name}-${now:%Y-%m-%d_%H-%M-%S}/eval
+    dir: ${storage.root}/experiments/verifier/${task.name}/${verifier.name}/eval/${experiment_name}-${now:%Y-%m-%d_%H-%M-%S}
   job:
     chdir: false

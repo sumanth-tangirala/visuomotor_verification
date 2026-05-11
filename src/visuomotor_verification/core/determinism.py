@@ -135,18 +135,26 @@ def resolve_seeds(cfg: RunConfig) -> Seeds:
     return Seeds(cuda_strict=cfg.seeds.cuda_strict)
 
 
-def seed_all(cfg: RunConfig, repo_root: Path | None) -> Seeds:
+def seed_all(
+    cfg: RunConfig,
+    repo_root: Path | None,
+    *,
+    git_info_cache: dict | None = None,
+) -> Seeds:
     """Seed every global RNG source according to `cfg`. Returns the resolved Seeds.
 
     The git-cleanliness gate (see §5.7 of the foundations spec) is enforced
     here when `repo_root` is not None. Pass `repo_root=None` only in tests
     that exercise pure seeding behavior outside of a repo context.
 
+    `git_info_cache`: if the caller has already collected git info (e.g. via
+    `git_info.collect(repo_root)`), pass it here to avoid a redundant collection.
+
     This is the ONLY function that should touch torch.manual_seed, np.random.seed,
     random.seed, or cuDNN flags.
     """
     if repo_root is not None:
-        info = git_info.collect(repo_root)
+        info = git_info_cache if git_info_cache is not None else git_info.collect(repo_root)
         if info["dirty"]:
             if cfg.mode is RunMode.DETERMINISTIC and not cfg.allow_dirty:
                 raise DirtyTreeError(
