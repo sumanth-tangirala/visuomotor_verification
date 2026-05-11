@@ -1,0 +1,4 @@
+_target_: visuomotor_verification.policy.diffusion_policy.adapter.DiffusionPolicy
+name: diffusion_policy
+# Hyperparams are filled in when the adapter is implemented (next PR).
+checkpoint: null

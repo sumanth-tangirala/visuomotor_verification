@@ -1,0 +1,15 @@
+defaults:
+  - run: deterministic
+  - task: push_t
+  - verifier: placeholder
+  - storage: default
+  - _self_
+
+experiment_name: ???
+rollouts_run: ???    # path to the rollouts run_dir feeding this verifier
+
+hydra:
+  run:
+    dir: ${storage.root}/experiments/verifier/${task.name}/${verifier.name}/${experiment_name}-${now:%Y-%m-%d_%H-%M-%S}
+  job:
+    chdir: false

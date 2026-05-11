@@ -1,0 +1,16 @@
+defaults:
+  - run: stochastic
+  - task: push_t
+  - verifier: placeholder
+  - storage: default
+  - _self_
+
+experiment_name: ???
+verifier_checkpoint: ???
+rollouts_run: ???
+
+hydra:
+  run:
+    dir: ${storage.root}/experiments/verifier/${task.name}/${verifier.name}/${experiment_name}-${now:%Y-%m-%d_%H-%M-%S}/eval
+  job:
+    chdir: false

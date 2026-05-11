@@ -1,0 +1,3 @@
+_target_: visuomotor_verification.task.push_t.PushTTask
+name: push_t
+horizon: 200

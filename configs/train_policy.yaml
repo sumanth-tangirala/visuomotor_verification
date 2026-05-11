@@ -1,0 +1,15 @@
+defaults:
+  - run: deterministic
+  - simulator: maniskill
+  - task: push_t
+  - policy: diffusion_policy
+  - storage: default
+  - _self_
+
+experiment_name: ???   # must be provided on the command line
+
+hydra:
+  run:
+    dir: ${storage.root}/policies/${task.name}/${policy.name}/${experiment_name}-${now:%Y-%m-%d_%H-%M-%S}
+  job:
+    chdir: false

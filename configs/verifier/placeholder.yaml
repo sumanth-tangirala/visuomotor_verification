@@ -1,0 +1,3 @@
+# Placeholder verifier config. No _target_ until the first concrete verifier exists;
+# entry-point scripts must guard `instantiate(cfg.verifier)` calls until then.
+name: placeholder

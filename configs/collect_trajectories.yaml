@@ -1,0 +1,16 @@
+defaults:
+  - run: deterministic
+  - simulator: maniskill
+  - task: push_t
+  - policy: diffusion_policy
+  - storage: default
+  - _self_
+
+experiment_name: ???
+num_episodes: 100
+
+hydra:
+  run:
+    dir: ${storage.root}/datasets/${task.name}/rollouts/${experiment_name}-${now:%Y-%m-%d_%H-%M-%S}
+  job:
+    chdir: false

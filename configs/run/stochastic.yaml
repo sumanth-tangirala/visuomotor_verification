@@ -1,0 +1,5 @@
+mode: stochastic
+# allow_dirty has no effect in stochastic mode (the gate only blocks deterministic);
+# kept here for explicitness.
+allow_dirty: true
+seeds: {}

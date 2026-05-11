@@ -1,0 +1,6 @@
+mode: deterministic
+allow_dirty: false
+seeds:
+  master: 42
+  # All other seeds derive from master. Override here to fix a single component
+  # (e.g. `sim: 999`) while leaving the rest derived.

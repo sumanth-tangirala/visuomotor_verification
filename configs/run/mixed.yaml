@@ -1,0 +1,6 @@
+mode: mixed
+allow_dirty: false
+seeds:
+  # Set only the components you want to fix. Unset ones run from the OS RNG.
+  # Example:
+  # sim: 7
