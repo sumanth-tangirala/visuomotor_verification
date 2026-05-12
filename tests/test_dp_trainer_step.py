@@ -63,3 +63,49 @@ def test_trainer_config_importable_and_constructible() -> None:
         device=torch.device("cpu"),
     )
     assert cfg.env_id == "PushT-v1"
+
+
+from torch.utils.tensorboard import SummaryWriter
+
+
+@pytest.mark.slow
+def test_train_runs_one_iteration_without_eval(tmp_path) -> None:
+    """Minimal train() invocation: 2 iters, eval_freq=0 to disable both in-loop
+    and post-loop eval, demo limited to 2 trajectories. Verify the save_freq=1
+    checkpoint and the final checkpoint both exist. Requires demo file present.
+    """
+    _need_demo()
+    from visuomotor_verification.policy.diffusion_policy.trainer import TrainerConfig, train
+    from visuomotor_verification.core.determinism import Seeds
+
+    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    cfg = TrainerConfig(
+        demo_path=DEMO_PATH,
+        env_id="PushT-v1",
+        control_mode="pd_ee_delta_pose",
+        obs_mode="rgb",
+        max_episode_steps=150,
+        sim_backend="physx_cuda",
+        obs_horizon=2, act_horizon=1, pred_horizon=16,
+        diffusion_step_embed_dim=64, unet_dims=[64, 128, 256],
+        n_groups=8, num_diffusion_iters=100,
+        total_iters=2, batch_size=2, lr=1e-4,
+        num_demos=2, num_dataload_workers=0,
+        log_freq=1,
+        eval_freq=0,             # disable eval for this unit test
+        save_freq=1,             # force a checkpoint at iter=1
+        num_eval_episodes=2, num_eval_envs=1,
+        seeds=Seeds(),
+        device=device,
+    )
+    run_dir = tmp_path / "run"
+    run_dir.mkdir()
+    writer = SummaryWriter(str(run_dir / "logs"))
+    try:
+        result = train(cfg, run_dir, writer)
+    finally:
+        writer.close()
+    assert result is not None
+    ckpts = {p.name for p in (run_dir / "checkpoints").iterdir()}
+    assert "iter_1.pt" in ckpts, f"expected iter_1.pt from save_freq=1, got: {ckpts}"
+    assert "final.pt" in ckpts, f"expected final.pt, got: {ckpts}"
