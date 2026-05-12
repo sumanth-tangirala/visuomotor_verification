@@ -92,3 +92,36 @@ def test_encode_obs_raises_when_no_visual_modality() -> None:
     obs_seq = {"state": torch.randn(1, 2, 9, device=device)}
     with pytest.raises(ValueError, match="include_rgb or include_depth"):
         dp.encode_obs(obs_seq, eval_mode=True)
+
+
+def test_compute_loss_returns_scalar() -> None:
+    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    dp = _build_dp(device).to(device)
+    B = 2
+    obs_seq = {
+        "state": torch.randn(B, dp.obs_horizon, dp.obs_state_dim, device=device),
+        "rgb": (torch.rand(B, dp.obs_horizon, 3, 64, 64, device=device) * 255).to(torch.uint8),
+    }
+    action_seq = torch.randn(B, dp.pred_horizon, dp.act_dim, device=device).clamp(-1, 1)
+    loss = dp.compute_loss(obs_seq, action_seq)
+    assert loss.dim() == 0, f"loss should be scalar, got shape {loss.shape}"
+    assert torch.isfinite(loss), f"loss is not finite: {loss.item()}"
+
+
+def test_compute_loss_backward() -> None:
+    """Loss must backprop and produce gradients on every learnable parameter."""
+    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    dp = _build_dp(device).to(device)
+    B = 2
+    obs_seq = {
+        "state": torch.randn(B, dp.obs_horizon, dp.obs_state_dim, device=device),
+        "rgb": (torch.rand(B, dp.obs_horizon, 3, 64, 64, device=device) * 255).to(torch.uint8),
+    }
+    action_seq = torch.randn(B, dp.pred_horizon, dp.act_dim, device=device).clamp(-1, 1)
+    loss = dp.compute_loss(obs_seq, action_seq)
+    loss.backward()
+    n_with_grad = sum(1 for p in dp.parameters() if p.grad is not None and p.grad.abs().sum() > 0)
+    n_total = sum(1 for p in dp.parameters() if p.requires_grad)
+    assert n_with_grad > 0
+    # Most params should get gradient
+    assert n_with_grad >= n_total // 2

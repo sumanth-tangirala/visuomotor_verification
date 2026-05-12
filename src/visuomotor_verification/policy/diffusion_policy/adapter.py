@@ -139,6 +139,28 @@ class DiffusionPolicy(nn.Module, Policy):
         feature = torch.cat((visual_feature, obs_seq["state"]), dim=-1)
         return feature.flatten(start_dim=1)
 
+    def compute_loss(self, obs_seq: dict[str, torch.Tensor], action_seq: torch.Tensor) -> torch.Tensor:
+        """Training-time DDPM loss. Mirrors upstream train_rgbd.py:Agent.compute_loss
+        (lines 312-337).
+
+        Uses GLOBAL torch RNG for noise and timestep sampling — training is
+        stochastic by spec (see foundations §5.4, dp-adapter design §6).
+        """
+        B = obs_seq["state"].shape[0]
+        obs_cond = self.encode_obs(obs_seq, eval_mode=False)
+
+        noise = torch.randn(
+            (B, self.pred_horizon, self.act_dim),
+            device=action_seq.device,
+        )
+        timesteps = torch.randint(
+            0, self.noise_scheduler.config.num_train_timesteps,
+            (B,), device=action_seq.device,
+        ).long()
+        noisy_action_seq = self.noise_scheduler.add_noise(action_seq, noise, timesteps)
+        noise_pred = self.noise_pred_net(noisy_action_seq, timesteps, global_cond=obs_cond)
+        return torch.nn.functional.mse_loss(noise_pred, noise)
+
     # --- ABC stubs: filled in across Tasks 5-9 ----------------------------------
     def reset(self, *, seed: int | None = None) -> None:
         raise NotImplementedError("filled in Task 8")
