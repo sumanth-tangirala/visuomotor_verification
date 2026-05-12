@@ -19,7 +19,12 @@ import numpy as np
 import torch
 import torch.optim as optim
 from diffusers.optimization import get_scheduler
-from diffusers.training_utils import EMAModel
+
+# EMAModel is imported lazily inside train() to avoid a diffusers/torch
+# version incompatibility (flash-attn custom-op schema error) that occurs when
+# diffusers.training_utils is imported at module level on this environment.
+# from diffusers.training_utils import EMAModel  # deferred to train()
+
 from gymnasium import spaces
 from mani_skill.utils.wrappers.flatten import FlattenRGBDObservationWrapper
 from torch.utils.data.dataloader import DataLoader
@@ -39,6 +44,46 @@ from diffusion_policy.utils import (
 
 from visuomotor_verification.core.determinism import Seeds
 from visuomotor_verification.policy.diffusion_policy.adapter import DiffusionPolicy
+
+
+@dataclass(frozen=True)
+class TrainerConfig:
+    """All knobs required by `train()`. Built by `scripts/train_policy.py` from
+    the Hydra DictConfig (`cfg.task`, `cfg.policy`, `cfg.training`, plus
+    resolved seeds from `cfg.run`)."""
+
+    # demo + env (from cfg.task)
+    demo_path: Path
+    env_id: str
+    control_mode: str
+    obs_mode: str
+    max_episode_steps: int
+    sim_backend: str
+
+    # DP hyperparams (from cfg.policy)
+    obs_horizon: int
+    act_horizon: int
+    pred_horizon: int
+    diffusion_step_embed_dim: int
+    unet_dims: list[int]
+    n_groups: int
+    num_diffusion_iters: int
+
+    # training (from cfg.training)
+    total_iters: int
+    batch_size: int
+    lr: float
+    num_demos: Optional[int]
+    num_dataload_workers: int
+    log_freq: int
+    eval_freq: int
+    save_freq: Optional[int]
+    num_eval_episodes: int
+    num_eval_envs: int
+
+    # determinism
+    seeds: Seeds
+    device: torch.device
 
 
 def _reorder_keys(d: dict, ref: Any) -> dict:
