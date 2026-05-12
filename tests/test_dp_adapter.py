@@ -141,3 +141,47 @@ def test_compute_loss_backward() -> None:
     )
     assert enc_grad > 0, f"visual_encoder received zero gradient (sum={enc_grad})"
     assert unet_grad > 0, f"noise_pred_net received zero gradient (sum={unet_grad})"
+
+
+def test_get_action_no_generator_uses_global_rng() -> None:
+    """When _gen is None, two consecutive get_action calls should differ
+    (global RNG advances)."""
+    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    dp = _build_dp(device).to(device).eval()
+    B = 1
+    obs_seq = {
+        "state": torch.zeros(B, dp.obs_horizon, dp.obs_state_dim, device=device),
+        "rgb": torch.zeros(B, dp.obs_horizon, 3, 64, 64, device=device, dtype=torch.uint8),
+    }
+    torch.manual_seed(0)
+    a1 = dp.get_action(obs_seq).cpu()
+    a2 = dp.get_action(obs_seq).cpu()
+    assert not torch.allclose(a1, a2), "global RNG should advance between calls"
+
+
+def test_get_action_with_generator_is_reproducible() -> None:
+    """Two get_action calls preceded by the same generator state must match."""
+    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    dp = _build_dp(device).to(device).eval()
+    B = 1
+    obs_seq = {
+        "state": torch.zeros(B, dp.obs_horizon, dp.obs_state_dim, device=device),
+        "rgb": torch.zeros(B, dp.obs_horizon, 3, 64, 64, device=device, dtype=torch.uint8),
+    }
+    dp._gen = torch.Generator(device=device).manual_seed(42)
+    a1 = dp.get_action(obs_seq).cpu()
+    dp._gen = torch.Generator(device=device).manual_seed(42)
+    a2 = dp.get_action(obs_seq).cpu()
+    assert torch.allclose(a1, a2), f"same seed should produce same action; diff={(a1 - a2).abs().max()}"
+
+
+def test_get_action_shape() -> None:
+    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    dp = _build_dp(device).to(device).eval()
+    B = 3
+    obs_seq = {
+        "state": torch.zeros(B, dp.obs_horizon, dp.obs_state_dim, device=device),
+        "rgb": torch.zeros(B, dp.obs_horizon, 3, 64, 64, device=device, dtype=torch.uint8),
+    }
+    a = dp.get_action(obs_seq)
+    assert a.shape == (B, dp.act_horizon, dp.act_dim), a.shape

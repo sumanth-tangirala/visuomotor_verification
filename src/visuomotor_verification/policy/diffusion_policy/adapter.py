@@ -161,6 +161,45 @@ class DiffusionPolicy(nn.Module, Policy):
         noise_pred = self.noise_pred_net(noisy_action_seq, timesteps, global_cond=obs_cond)
         return torch.nn.functional.mse_loss(noise_pred, noise)
 
+    def get_action(self, obs_seq: dict[str, torch.Tensor]) -> torch.Tensor:
+        """Inference. Mirrors upstream train_rgbd.py:Agent.get_action (339-381),
+        but every torch.randn and noise_scheduler.step is threaded with
+        `self._gen` so the diffusion sampler is reproducible per `seeds.policy`
+        when `reset(seed=...)` was called.
+
+        Args:
+            obs_seq: dict with 'state' (B, H, S) and 'rgb' (B, H, C, IH, IW) uint8.
+                Caller must pass RGB in channels-first layout.
+
+        Returns:
+            (B, act_horizon, act_dim) float tensor.
+        """
+        B = obs_seq["state"].shape[0]
+        with torch.no_grad():
+            obs_cond = self.encode_obs(obs_seq, eval_mode=True)
+
+            noisy_action_seq = torch.randn(
+                (B, self.pred_horizon, self.act_dim),
+                device=obs_seq["state"].device,
+                generator=self._gen,
+            )
+            for k in self.noise_scheduler.timesteps:
+                noise_pred = self.noise_pred_net(
+                    sample=noisy_action_seq,
+                    timestep=k,
+                    global_cond=obs_cond,
+                )
+                noisy_action_seq = self.noise_scheduler.step(
+                    model_output=noise_pred,
+                    timestep=k,
+                    sample=noisy_action_seq,
+                    generator=self._gen,
+                ).prev_sample
+
+        start = self.obs_horizon - 1
+        end = start + self.act_horizon
+        return noisy_action_seq[:, start:end]
+
     # --- ABC stubs: filled in across Tasks 5-9 ----------------------------------
     def reset(self, *, seed: int | None = None) -> None:
         raise NotImplementedError("filled in Task 8")
