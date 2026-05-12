@@ -1,12 +1,31 @@
 defaults:
-  - run: deterministic
+  # Training is stochastic by spec (foundations §5.4, dp-adapter §6): cuDNN
+  # determinism has a meaningful cost and training byte-determinism on CUDA
+  # is mostly aspirational. Use `run=deterministic` only for evaluation/rollout.
+  - run: stochastic
   - simulator: maniskill
   - task: push_t
   - policy: diffusion_policy
   - storage: default
   - _self_
 
-experiment_name: ???   # must be provided on the command line
+experiment_name: ???   # required; must be provided on the command line
+
+training:
+  total_iters: 50000
+  batch_size: 64           # informed guess for RGB on 11GB; reduce if OOM, bump if headroom
+  lr: 1.0e-4
+  num_demos: null
+  num_dataload_workers: 0
+  log_freq: 1000
+  eval_freq: 5000
+  save_freq: null
+  num_eval_episodes: 100
+  num_eval_envs: 100
+  wandb:
+    enabled: false
+    project: visuomotor_verification
+    entity: null
 
 hydra:
   run:

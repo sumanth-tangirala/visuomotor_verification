@@ -1,3 +1,11 @@
 _target_: visuomotor_verification.task.push_t.PushTTask
 name: push_t
-horizon: 200
+env_id: PushT-v1
+control_mode: pd_ee_delta_pose
+obs_mode: rgb
+sim_backend: physx_cuda
+max_episode_steps: 150
+horizon: 150
+# HOME with `~` fallback so resolving the config doesn't error on environments
+# where HOME happens to be unset (e.g., some batch-scheduler invocations).
+demo_path: ${oc.env:HOME,"~"}/.maniskill/demos/PushT-v1/rl/trajectory.rgb.pd_ee_delta_pose.physx_cuda.h5

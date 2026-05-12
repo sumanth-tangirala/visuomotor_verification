@@ -1,4 +1,11 @@
 _target_: visuomotor_verification.policy.diffusion_policy.adapter.DiffusionPolicy
 name: diffusion_policy
-# Hyperparams are filled in when the adapter is implemented (next PR).
 checkpoint: null
+
+obs_horizon: 2
+act_horizon: 1   # re-plan every step; upstream default is 8 (chunk). Matches baselines.sh push-T recipe.
+pred_horizon: 16
+diffusion_step_embed_dim: 64
+unet_dims: [64, 128, 256]
+n_groups: 8
+num_diffusion_iters: 100
