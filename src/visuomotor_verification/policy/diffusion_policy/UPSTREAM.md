@@ -22,9 +22,17 @@ diff -r /tmp/ms-new/examples/baselines/diffusion_policy/ \
 
 ## Adapter status
 
-`adapter.py` will wrap this baseline behind our `Policy` ABC. As of this PR,
-`adapter.py` is a TODO stub — not yet implemented. Implementation is deferred
-to the next PR (see foundations design spec §9).
+`adapter.py` wraps the vendored DP model components behind our `Policy` ABC.
+It re-implements (not subclasses) the upstream `Agent` class because the
+upstream class references module-level globals (`device`) set only inside
+`if __name__ == "__main__":`. Our re-implementation lifts those globals to
+`__init__` kwargs. Upstream line ranges are recorded in the docstring of
+each method (`__init__`, `encode_obs`, `compute_loss`, `get_action`).
+
+The diffusion-policy sampler in `get_action` threads a `torch.Generator`
+through every `torch.randn` and `noise_scheduler.step` so the inference
+RNG is reproducible per `seeds.policy` independently of the global torch
+RNG. See the foundations design spec §5.2 and the dp-adapter design §6.
 
 ## Runtime / invocation note
 

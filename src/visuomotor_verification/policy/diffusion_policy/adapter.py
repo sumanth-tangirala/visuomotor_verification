@@ -162,20 +162,29 @@ class DiffusionPolicy(nn.Module, Policy):
         return torch.nn.functional.mse_loss(noise_pred, noise)
 
     def get_action(self, obs_seq: dict[str, torch.Tensor]) -> torch.Tensor:
-        """Inference. Mirrors upstream train_rgbd.py:Agent.get_action (339-381),
-        but every torch.randn and noise_scheduler.step is threaded with
-        `self._gen` so the diffusion sampler is reproducible per `seeds.policy`
-        when `reset(seed=...)` was called.
+        """Inference. Mirrors upstream train_rgbd.py:Agent.get_action (339-381)
+        exactly, including the in-method channels-last → channels-first permute,
+        but with `self._gen` threaded through every torch.randn and
+        noise_scheduler.step so the diffusion sampler is reproducible per
+        `seeds.policy` when `reset(seed=...)` was called.
 
         Args:
-            obs_seq: dict with 'state' (B, H, S) and 'rgb' (B, H, C, IH, IW) uint8.
-                Caller must pass RGB in channels-first layout.
+            obs_seq: dict with 'state' (B, H, S) and 'rgb' (B, H, IH, IW, C) uint8
+                in CHANNELS-LAST layout (matches what env steps return).
+                Optionally 'depth' in the same layout.
 
         Returns:
             (B, act_horizon, act_dim) float tensor.
         """
         B = obs_seq["state"].shape[0]
         with torch.no_grad():
+            # Permute channels-last → channels-first to match what encode_obs +
+            # PlainConv expect. Mirrors upstream lines 349-352.
+            if self.include_rgb:
+                obs_seq["rgb"] = obs_seq["rgb"].permute(0, 1, 4, 2, 3)
+            if self.include_depth:
+                obs_seq["depth"] = obs_seq["depth"].permute(0, 1, 4, 2, 3)
+
             obs_cond = self.encode_obs(obs_seq, eval_mode=True)
 
             noisy_action_seq = torch.randn(
@@ -219,8 +228,9 @@ class DiffusionPolicy(nn.Module, Policy):
 
         `obs_history` must be a list of length `obs_horizon`, each element a
         dict with `state` (np.ndarray of shape (obs_state_dim,)) and `rgb`
-        (np.ndarray of shape (C, H, W), uint8). Padding the buffer for the
-        first few steps of an episode is the caller's responsibility.
+        (np.ndarray of shape (H, W, C), uint8 — channels-last). Padding the
+        buffer for the first few steps of an episode is the caller's
+        responsibility.
         """
         if not self._action_cache:
             obs_seq = self._stack_obs_for_inference(obs_history)
@@ -231,13 +241,19 @@ class DiffusionPolicy(nn.Module, Policy):
         return self._action_cache.pop(0)
 
     def _stack_obs_for_inference(self, obs_history: list[Observation]) -> dict[str, torch.Tensor]:
-        """Build a batched (B=1) obs_seq dict suitable for `get_action`."""
+        """Build a batched (B=1) obs_seq dict suitable for `get_action`.
+
+        Each element of `obs_history` is a dict with `state` (np.ndarray of
+        shape (obs_state_dim,)) and `rgb` (np.ndarray of shape (H, W, C),
+        uint8 — channels-last, matching env step return). `get_action`
+        handles the channels-last → channels-first permute internally.
+        """
         if len(obs_history) != self.obs_horizon:
             raise ValueError(
                 f"obs_history length {len(obs_history)} != obs_horizon {self.obs_horizon}"
             )
         states = np.stack([o["state"] for o in obs_history], axis=0)   # (H, S)
-        rgbs = np.stack([o["rgb"] for o in obs_history], axis=0)       # (H, C, IH, IW)
+        rgbs = np.stack([o["rgb"] for o in obs_history], axis=0)       # (H, IH, IW, C)
         return {
             "state": torch.from_numpy(states).float().unsqueeze(0).to(self._device),
             "rgb": torch.from_numpy(rgbs).unsqueeze(0).to(self._device),

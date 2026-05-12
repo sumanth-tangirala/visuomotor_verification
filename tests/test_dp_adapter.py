@@ -159,11 +159,15 @@ def test_get_action_no_generator_uses_global_rng() -> None:
     B = 1
     obs_seq = {
         "state": torch.zeros(B, dp.obs_horizon, dp.obs_state_dim, device=device),
-        "rgb": torch.zeros(B, dp.obs_horizon, 3, 64, 64, device=device, dtype=torch.uint8),
+        "rgb": torch.zeros(B, dp.obs_horizon, 64, 64, 3, device=device, dtype=torch.uint8),
     }
     torch.manual_seed(0)
     a1 = dp.get_action(obs_seq).cpu()
-    a2 = dp.get_action(obs_seq).cpu()
+    obs_seq2 = {
+        "state": torch.zeros(B, dp.obs_horizon, dp.obs_state_dim, device=device),
+        "rgb": torch.zeros(B, dp.obs_horizon, 64, 64, 3, device=device, dtype=torch.uint8),
+    }
+    a2 = dp.get_action(obs_seq2).cpu()
     assert not torch.allclose(a1, a2), "global RNG should advance between calls"
 
 
@@ -173,14 +177,18 @@ def test_get_action_with_generator_is_reproducible() -> None:
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     dp = _build_dp(device).to(device).eval()
     B = 1
-    obs_seq = {
+    dp._gen = torch.Generator(device=device).manual_seed(42)
+    obs_seq1 = {
         "state": torch.zeros(B, dp.obs_horizon, dp.obs_state_dim, device=device),
-        "rgb": torch.zeros(B, dp.obs_horizon, 3, 64, 64, device=device, dtype=torch.uint8),
+        "rgb": torch.zeros(B, dp.obs_horizon, 64, 64, 3, device=device, dtype=torch.uint8),
     }
+    a1 = dp.get_action(obs_seq1).cpu()
     dp._gen = torch.Generator(device=device).manual_seed(42)
-    a1 = dp.get_action(obs_seq).cpu()
-    dp._gen = torch.Generator(device=device).manual_seed(42)
-    a2 = dp.get_action(obs_seq).cpu()
+    obs_seq2 = {
+        "state": torch.zeros(B, dp.obs_horizon, dp.obs_state_dim, device=device),
+        "rgb": torch.zeros(B, dp.obs_horizon, 64, 64, 3, device=device, dtype=torch.uint8),
+    }
+    a2 = dp.get_action(obs_seq2).cpu()
     assert torch.allclose(a1, a2), f"same seed should produce same action; diff={(a1 - a2).abs().max()}"
 
 
@@ -191,7 +199,7 @@ def test_get_action_shape() -> None:
     B = 3
     obs_seq = {
         "state": torch.zeros(B, dp.obs_horizon, dp.obs_state_dim, device=device),
-        "rgb": torch.zeros(B, dp.obs_horizon, 3, 64, 64, device=device, dtype=torch.uint8),
+        "rgb": torch.zeros(B, dp.obs_horizon, 64, 64, 3, device=device, dtype=torch.uint8),
     }
     a = dp.get_action(obs_seq)
     assert a.shape == (B, dp.act_horizon, dp.act_dim), a.shape
@@ -199,13 +207,14 @@ def test_get_action_shape() -> None:
 
 def _fake_obs_history(dp) -> list:
     """Construct an obs_history of length obs_horizon, each obs being a
-    dict with numpy state and rgb tensors."""
+    dict with numpy state and rgb arrays. RGB is channels-last (H, W, C)
+    to match env step return convention."""
     out = []
     for _ in range(dp.obs_horizon):
         out.append(
             {
                 "state": np.zeros((dp.obs_state_dim,), dtype=np.float32),
-                "rgb": np.zeros((3, 64, 64), dtype=np.uint8),
+                "rgb": np.zeros((64, 64, 3), dtype=np.uint8),
             }
         )
     return out

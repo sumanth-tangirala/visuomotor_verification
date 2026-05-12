@@ -96,14 +96,13 @@ def test_get_action_matches_vendored_agent_under_shared_seed():
     # Layout matches because both classes build the same submodules in the same order.
     ours.load_state_dict(upstream.state_dict())
 
-    # Build a single observation. Upstream's get_action expects rgb in (B, H, IH, IW, C)
-    # and permutes to (B, H, C, IH, IW) internally. Our get_action expects pre-permuted.
+    # Both upstream and our get_action expect channels-last RGB (env step layout)
+    # and permute internally. Pass identical inputs.
     B = 1
-    rgb_upstream = torch.zeros(B, obs_horizon, H, W, rgb_channels, dtype=torch.uint8, device=device)
-    rgb_ours = rgb_upstream.permute(0, 1, 4, 2, 3).contiguous()
+    rgb = torch.zeros(B, obs_horizon, H, W, rgb_channels, dtype=torch.uint8, device=device)
     state = torch.zeros(B, obs_horizon, obs_state_dim, device=device)
-    obs_upstream = {"state": state.clone(), "rgb": rgb_upstream}
-    obs_ours = {"state": state.clone(), "rgb": rgb_ours}
+    obs_upstream = {"state": state.clone(), "rgb": rgb.clone()}
+    obs_ours = {"state": state.clone(), "rgb": rgb.clone()}
 
     torch.manual_seed(123)
     a_upstream = upstream.get_action(obs_upstream).detach()

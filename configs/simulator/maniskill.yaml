@@ -1,5 +1,4 @@
 _target_: visuomotor_verification.simulator.maniskill.ManiSkillSimulator
-# Concrete impl is added in a later PR; this stub records the target path.
 name: maniskill
 env_id: PushT-v1
 control_mode: pd_ee_delta_pose

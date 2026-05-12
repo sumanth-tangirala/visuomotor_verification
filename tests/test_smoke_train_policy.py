@@ -48,6 +48,7 @@ def test_train_policy_end_to_end(tmp_path: Path) -> None:
     assert (run_dir / "metadata.json").exists()
     assert (run_dir / ".hydra").exists()
     assert (run_dir / "checkpoints").exists()
+    assert (run_dir / "logs").exists()
     ckpts = list((run_dir / "checkpoints").iterdir())
     assert len(ckpts) >= 1, f"no checkpoints under {run_dir / 'checkpoints'}"
 
