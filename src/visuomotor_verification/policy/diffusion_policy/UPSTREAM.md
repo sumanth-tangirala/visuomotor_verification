@@ -29,13 +29,26 @@ to the next PR (see foundations design spec §9).
 ## Runtime / invocation note
 
 The vendored `train.py` and `train_rgbd.py` import from `diffusion_policy.utils`,
-`diffusion_policy.evaluate`, etc. Upstream resolves these via the vendored
-`setup.py` + `find_packages()`. Our `pyproject.toml` does **not** install the
-vendored package, and the inner `diffusion_policy/diffusion_policy/` directory
-has no `__init__.py`, so the upstream entry-point scripts cannot be invoked
-directly from our repo as-is.
+`diffusion_policy.evaluate`, etc. — bare top-level package imports that
+upstream resolves via `setup.py` + `find_packages()`. Our `pyproject.toml`
+does not install the vendored package, and the inner
+`diffusion_policy/diffusion_policy/` directory has no `__init__.py`.
 
-The next PR (DP adapter wiring) will handle this — either via an explicit
-`sys.path` shim in the adapter, or by adding an `__init__.py` shim in our
-own non-vendored sibling. Until then, do not invoke the vendored `train.py`
-directly from this repo layout.
+**Resolved:** `_vendor_import.py` (sibling of this file) inserts the outer
+vendored directory onto `sys.path` once at import time. `adapter.py` and
+`trainer.py` both `from . import _vendor_import` as their first line so the
+shim is active before any vendored import resolves. After the shim runs,
+`from diffusion_policy.utils import ...` works.
+
+Note that the outer vendored scripts (`train.py`, `train_rgbd.py`) define
+`Agent` and `SmallDemoDataset_DiffusionPolicy` referencing module-level
+globals (`device`, `args.control_mode`) set only inside their `__main__`
+block. Importing those classes and calling their methods raises `NameError`.
+We re-implement those wrappers in `adapter.py` and `trainer.py` with the
+globals lifted to `__init__` kwargs; see the upstream-line-range comments in
+each class.
+
+Additionally, on some environments `from diffusers.training_utils import EMAModel`
+triggers a flash-attn / torch op-schema cascade at module import. `trainer.py`
+defers this import into the `train()` function body to avoid the failure at
+module-import time.
