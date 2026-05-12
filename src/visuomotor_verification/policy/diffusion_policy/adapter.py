@@ -202,10 +202,46 @@ class DiffusionPolicy(nn.Module, Policy):
 
     # --- ABC stubs: filled in across Tasks 5-9 ----------------------------------
     def reset(self, *, seed: int | None = None) -> None:
-        raise NotImplementedError("filled in Task 8")
+        """Reset per-episode state. If `seed` is provided, build a local
+        torch.Generator on `self._device` seeded with it; subsequent inference
+        is reproducible per seed. If `seed` is None, fall back to global RNG.
+        """
+        self._action_cache.clear()
+        if seed is None:
+            self._gen = None
+        else:
+            self._gen = torch.Generator(device=self._device).manual_seed(int(seed))
 
     def act(self, obs_history: list[Observation]) -> Action:
-        raise NotImplementedError("filled in Task 8")
+        """Return a single action. Implements action chunking: each get_action
+        call returns `act_horizon` actions, which we serve one-at-a-time from
+        the cache. When the cache is empty we run another denoise pass.
+
+        `obs_history` must be a list of length `obs_horizon`, each element a
+        dict with `state` (np.ndarray of shape (obs_state_dim,)) and `rgb`
+        (np.ndarray of shape (C, H, W), uint8). Padding the buffer for the
+        first few steps of an episode is the caller's responsibility.
+        """
+        if not self._action_cache:
+            obs_seq = self._stack_obs_for_inference(obs_history)
+            with torch.no_grad():
+                action_seq = self.get_action(obs_seq)  # (1, act_horizon, act_dim)
+            arr = action_seq[0].cpu().numpy()
+            self._action_cache = [arr[i] for i in range(arr.shape[0])]
+        return self._action_cache.pop(0)
+
+    def _stack_obs_for_inference(self, obs_history: list[Observation]) -> dict[str, torch.Tensor]:
+        """Build a batched (B=1) obs_seq dict suitable for `get_action`."""
+        if len(obs_history) != self.obs_horizon:
+            raise ValueError(
+                f"obs_history length {len(obs_history)} != obs_horizon {self.obs_horizon}"
+            )
+        states = np.stack([o["state"] for o in obs_history], axis=0)   # (H, S)
+        rgbs = np.stack([o["rgb"] for o in obs_history], axis=0)       # (H, C, IH, IW)
+        return {
+            "state": torch.from_numpy(states).float().unsqueeze(0).to(self._device),
+            "rgb": torch.from_numpy(rgbs).unsqueeze(0).to(self._device),
+        }
 
     def load(self, ckpt_path: Path) -> None:
         raise NotImplementedError("filled in Task 9")

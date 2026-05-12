@@ -185,3 +185,85 @@ def test_get_action_shape() -> None:
     }
     a = dp.get_action(obs_seq)
     assert a.shape == (B, dp.act_horizon, dp.act_dim), a.shape
+
+
+def _fake_obs_history(dp) -> list:
+    """Construct an obs_history of length obs_horizon, each obs being a
+    dict with numpy state and rgb tensors."""
+    out = []
+    for _ in range(dp.obs_horizon):
+        out.append(
+            {
+                "state": np.zeros((dp.obs_state_dim,), dtype=np.float32),
+                "rgb": np.zeros((3, 64, 64), dtype=np.uint8),
+            }
+        )
+    return out
+
+
+def test_reset_with_none_clears_generator() -> None:
+    dp = _build_dp()
+    dp._gen = torch.Generator(device=dp._device).manual_seed(1)
+    dp._action_cache.append(np.zeros(dp.act_dim, dtype=np.float32))
+    dp.reset(seed=None)
+    assert dp._gen is None
+    assert dp._action_cache == []
+
+
+def test_reset_with_seed_builds_generator() -> None:
+    dp = _build_dp()
+    dp.reset(seed=42)
+    assert dp._gen is not None
+    assert isinstance(dp._gen, torch.Generator)
+
+
+def test_act_returns_single_action_array() -> None:
+    dp = _build_dp().eval()
+    dp.reset(seed=0)
+    history = _fake_obs_history(dp)
+    a = dp.act(history)
+    assert isinstance(a, np.ndarray)
+    assert a.shape == (dp.act_dim,)
+
+
+def test_act_seeds_reproduce_first_action() -> None:
+    dp = _build_dp().eval()
+    history = _fake_obs_history(dp)
+
+    dp.reset(seed=7)
+    a1 = dp.act(history)
+    dp.reset(seed=7)
+    a2 = dp.act(history)
+    assert np.allclose(a1, a2), f"seed 7 should reproduce; diff={np.abs(a1 - a2).max()}"
+
+
+def test_act_chunking_serves_from_cache_then_requeries() -> None:
+    """With act_horizon=2, first act() triggers a denoise pass (fills 2 actions),
+    second act() reads from cache, third act() triggers another denoise pass."""
+    from visuomotor_verification.policy.diffusion_policy.adapter import DiffusionPolicy
+    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    dp = DiffusionPolicy(
+        obs_horizon=2, act_horizon=2, pred_horizon=16,
+        act_dim=4, obs_state_dim=9, rgb_shape=(3, 64, 64),
+        include_rgb=True, include_depth=False,
+        diffusion_step_embed_dim=64, unet_dims=[64, 128, 256],
+        n_groups=8, num_diffusion_iters=100, device=device,
+    ).to(device).eval()
+    dp.reset(seed=11)
+
+    history = _fake_obs_history(dp)
+    # Patch get_action to count calls.
+    calls = []
+    orig = dp.get_action
+    def counting(obs_seq):
+        calls.append(1)
+        return orig(obs_seq)
+    dp.get_action = counting
+
+    a1 = dp.act(history)
+    a2 = dp.act(history)
+    a3 = dp.act(history)
+
+    # 2 denoise passes total (one fills 2 actions, the third triggers a refill).
+    assert len(calls) == 2, f"expected 2 get_action calls, got {len(calls)}"
+    assert a1.shape == (dp.act_dim,) and a2.shape == (dp.act_dim,) and a3.shape == (dp.act_dim,)
