@@ -8,7 +8,10 @@ import pytest
 import torch
 
 
-DEMO_PATH = Path.home() / ".maniskill/demos/PushT-v1/rl/trajectory.rgb.pd_ee_delta_pose.physx_cuda.h5"
+DEMO_PATH = Path(
+    "/common/users/shared/pracsys/visuomotor_verification-data"
+    "/datasets/policy_demos/push_t/trajectory.rgb.pd_ee_delta_pose.physx_cuda.h5"
+)
 
 
 def _need_demo() -> None:

@@ -6,6 +6,4 @@ obs_mode: rgb
 sim_backend: physx_cuda
 max_episode_steps: 150
 horizon: 150
-# HOME with `~` fallback so resolving the config doesn't error on environments
-# where HOME happens to be unset (e.g., some batch-scheduler invocations).
-demo_path: ${oc.env:HOME,"~"}/.maniskill/demos/PushT-v1/rl/trajectory.rgb.pd_ee_delta_pose.physx_cuda.h5
+demo_path: ${storage.root}/datasets/policy_demos/${task.name}/trajectory.rgb.pd_ee_delta_pose.physx_cuda.h5

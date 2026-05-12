@@ -15,12 +15,25 @@ instantiated via Hydra `_target_`.
 ## Paths
 
 - **Shared data root:** `/common/users/shared/pracsys/visuomotor_verification-data/`
-  - All datasets, checkpoints, verifier experiments, and Hydra outputs live here.
-  - The repo itself contains only code, configs, docs, and tests.
-- **Subdirectories** (already created):
-  - `datasets/<task>/{demos,rollouts}/<run_id>/`
-  - `policies/<task>/<policy>/<run_id>/`
-  - `experiments/verifier/<task>/<verifier>/<run_id>/`
+  - All disk-space-heavy artifacts go here: demonstration datasets, rollout
+    trajectories, policy checkpoints, verifier experiments, and per-run Hydra
+    outputs (`.hydra/`, `metadata.json`, `checkpoints/`, `logs/`).
+  - The repo itself contains only code, configs, docs, and tests. Never write
+    large artifacts under the repo or under `~/` — the home filesystem is
+    quota-limited.
+- **Layout under the shared root:**
+  - `datasets/policy_demos/<task>/` — demonstration datasets used to train
+    policies (e.g., ManiSkill-downloaded + replayed `.h5` files). Shared across
+    runs; not run-id scoped.
+  - `datasets/<task>/rollouts/<run_id>/` — rollouts of trained policies,
+    consumed by verifier training. Run-id scoped.
+  - `policies/<task>/<policy>/<run_id>/` — policy training runs (one run dir
+    per training invocation).
+  - `experiments/verifier/<task>/<verifier>/<run_id>/` — verifier training and
+    evaluation runs.
+- **Pre-existing artifacts** that need to land under the shared root (e.g.
+  ManiSkill demos downloaded into `~/.maniskill/`) should be moved into
+  `datasets/policy_demos/<task>/` after retrieval.
 
 ## Determinism principle
 
@@ -55,7 +68,7 @@ blanket override — commit or stash instead. The diff is always recorded in
 
 | Script | Reads | Writes |
 |---|---|---|
-| `scripts/train_policy.py` | `datasets/<task>/demos/<run_id>` | `policies/<task>/<policy>/<run_id>` |
+| `scripts/train_policy.py` | `datasets/policy_demos/<task>/` | `policies/<task>/<policy>/<run_id>` |
 | `scripts/collect_trajectories.py` | policy checkpoint | `datasets/<task>/rollouts/<run_id>` |
 | `scripts/train_verifier.py` | rollouts | `experiments/verifier/<task>/<verifier>/<run_id>` |
 | `scripts/evaluate_verifier.py` | verifier ckpt + held-out rollouts | eval subdir |

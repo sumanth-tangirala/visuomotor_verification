@@ -20,18 +20,27 @@ The downstream goal is to roll out the trained policy and collect labeled trajec
 
 ### One-time setup (before any training run)
 
+The downloaded ManiSkill demos use `obs_mode=none` (state-only), so they need to be replayed once to produce the RGB version that DP training consumes. The final RGB `.h5` lives under the shared data root.
+
 ```bash
-# 1. Download RL-generated state demos for push-T
+# 1. Download RL-generated state demos for push-T (into user home — temporary).
 python -m mani_skill.utils.download_demo PushT-v1 -o ~/.maniskill/demos
 
-# 2. Replay state demos to produce RGB trajectories
-python -m mani_skill.trajectory.replay_trajectory \
-    --traj-path ~/.maniskill/demos/PushT-v1/rl/trajectory.state.pd_ee_delta_pose.physx_cuda.h5 \
+# 2. Replay state demos to produce RGB trajectories (uses GPU 1; CUDA_VISIBLE_DEVICES routes it).
+CUDA_VISIBLE_DEVICES=1 python -m mani_skill.trajectory.replay_trajectory \
+    --traj-path ~/.maniskill/demos/PushT-v1/rl/trajectory.none.pd_ee_delta_pose.physx_cuda.h5 \
     --use-env-states --obs-mode rgb --target-control-mode pd_ee_delta_pose \
-    --save-traj --num-procs 4
+    --save-traj --num-envs 4 --count 100
+
+# 3. Move the replayed `.h5` (and its `.json` sidecar) into the shared data root
+#    under datasets/policy_demos/<task>/, where `configs/task/push_t.yaml`'s
+#    `demo_path` interpolation expects it.
+DEST=/common/users/shared/pracsys/visuomotor_verification-data/datasets/policy_demos/push_t
+mkdir -p "$DEST"
+mv ~/.maniskill/demos/PushT-v1/rl/trajectory.rgb.pd_ee_delta_pose.physx_cuda.{h5,json} "$DEST"/
 ```
 
-This produces `~/.maniskill/demos/PushT-v1/rl/trajectory.rgb.pd_ee_delta_pose.physx_cuda.h5`. Demos are downloaded and replayed once per machine; `scripts/train_policy.py` asserts the file exists and points back to this section if not. `scripts/train_policy.py`'s module docstring references this spec section so the recipe is discoverable from the script.
+This places the demos at `$DEST/trajectory.rgb.pd_ee_delta_pose.physx_cuda.h5`, matching `${storage.root}/datasets/policy_demos/${task.name}/...` in the Hydra task config. `scripts/train_policy.py` asserts the file exists and points back to this section if not.
 
 ---
 

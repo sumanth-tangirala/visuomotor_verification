@@ -17,7 +17,7 @@ dependencies = [
     "tensorboard",
     "wandb",
     "tqdm",
-    "diffusers",
+    "diffusers>=0.30,<0.33",  # pinned: 0.33+ pulls in ace_step_transformer which crashes torch 2.4's _custom_op schema inference (flash-attn op uses PEP-604 union types)
     "einops",
 ]
 

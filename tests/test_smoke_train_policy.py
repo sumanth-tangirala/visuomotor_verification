@@ -10,7 +10,10 @@ from pathlib import Path
 import pytest
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
-DEMO_PATH = Path.home() / ".maniskill/demos/PushT-v1/rl/trajectory.rgb.pd_ee_delta_pose.physx_cuda.h5"
+DEMO_PATH = Path(
+    "/common/users/shared/pracsys/visuomotor_verification-data"
+    "/datasets/policy_demos/push_t/trajectory.rgb.pd_ee_delta_pose.physx_cuda.h5"
+)
 
 
 @pytest.mark.slow
@@ -21,11 +24,15 @@ def test_train_policy_end_to_end(tmp_path: Path) -> None:
             "docs/superpowers/specs/2026-05-11-dp-adapter-design.md §1."
         )
 
+    # storage.root is redirected to tmp_path so the run_dir lives there, but
+    # task.demo_path interpolates from storage.root by default — override
+    # explicitly so the demo lookup still finds the real (shared-dir) file.
     cmd = [
         sys.executable,
         str(REPO_ROOT / "scripts" / "train_policy.py"),
         "run=stochastic",
         f"storage.root={tmp_path}",
+        f"task.demo_path={DEMO_PATH}",
         "experiment_name=smoke_train_e2e",
         "training.total_iters=2",
         "training.batch_size=2",
