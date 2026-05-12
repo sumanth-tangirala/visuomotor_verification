@@ -39,16 +39,19 @@ def _build_dp(device: torch.device = None):
     ).to(device)
 
 
+@pytest.mark.slow
 def test_diffusion_policy_is_policy_subclass() -> None:
     dp = _build_dp()
     assert isinstance(dp, Policy)
 
 
+@pytest.mark.slow
 def test_diffusion_policy_is_nn_module() -> None:
     dp = _build_dp()
     assert isinstance(dp, torch.nn.Module)
 
 
+@pytest.mark.slow
 def test_diffusion_policy_has_expected_submodules() -> None:
     dp = _build_dp()
     assert hasattr(dp, "visual_encoder")
@@ -61,6 +64,7 @@ def test_diffusion_policy_has_expected_submodules() -> None:
     assert dp.act_dim == 4
 
 
+@pytest.mark.slow
 def test_encode_obs_shape() -> None:
     """encode_obs takes a dict {state, rgb} and returns (B, obs_horizon * (visual_dim + state_dim))."""
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -77,6 +81,7 @@ def test_encode_obs_shape() -> None:
     assert feat.shape == (B, expected_dim), f"got {feat.shape}, want (B={B}, {expected_dim})"
 
 
+@pytest.mark.slow
 def test_encode_obs_raises_when_no_visual_modality() -> None:
     """include_rgb=False and include_depth=False is invalid — guard it explicitly."""
     from visuomotor_verification.policy.diffusion_policy.adapter import DiffusionPolicy
@@ -94,6 +99,7 @@ def test_encode_obs_raises_when_no_visual_modality() -> None:
         dp.encode_obs(obs_seq, eval_mode=True)
 
 
+@pytest.mark.slow
 def test_compute_loss_returns_scalar() -> None:
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     dp = _build_dp(device).to(device)
@@ -108,6 +114,7 @@ def test_compute_loss_returns_scalar() -> None:
     assert torch.isfinite(loss), f"loss is not finite: {loss.item()}"
 
 
+@pytest.mark.slow
 def test_compute_loss_backward() -> None:
     """Loss must backprop and produce gradients on every learnable parameter
     (both visual_encoder and noise_pred_net).
@@ -143,6 +150,7 @@ def test_compute_loss_backward() -> None:
     assert unet_grad > 0, f"noise_pred_net received zero gradient (sum={unet_grad})"
 
 
+@pytest.mark.slow
 def test_get_action_no_generator_uses_global_rng() -> None:
     """When _gen is None, two consecutive get_action calls should differ
     (global RNG advances)."""
@@ -159,6 +167,7 @@ def test_get_action_no_generator_uses_global_rng() -> None:
     assert not torch.allclose(a1, a2), "global RNG should advance between calls"
 
 
+@pytest.mark.slow
 def test_get_action_with_generator_is_reproducible() -> None:
     """Two get_action calls preceded by the same generator state must match."""
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -175,6 +184,7 @@ def test_get_action_with_generator_is_reproducible() -> None:
     assert torch.allclose(a1, a2), f"same seed should produce same action; diff={(a1 - a2).abs().max()}"
 
 
+@pytest.mark.slow
 def test_get_action_shape() -> None:
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     dp = _build_dp(device).to(device).eval()
@@ -201,6 +211,7 @@ def _fake_obs_history(dp) -> list:
     return out
 
 
+@pytest.mark.slow
 def test_reset_with_none_clears_generator() -> None:
     dp = _build_dp()
     dp._gen = torch.Generator(device=dp._device).manual_seed(1)
@@ -210,6 +221,7 @@ def test_reset_with_none_clears_generator() -> None:
     assert dp._action_cache == []
 
 
+@pytest.mark.slow
 def test_reset_with_seed_builds_generator() -> None:
     dp = _build_dp()
     dp.reset(seed=42)
@@ -217,6 +229,7 @@ def test_reset_with_seed_builds_generator() -> None:
     assert isinstance(dp._gen, torch.Generator)
 
 
+@pytest.mark.slow
 def test_act_returns_single_action_array() -> None:
     dp = _build_dp().eval()
     dp.reset(seed=0)
@@ -226,6 +239,7 @@ def test_act_returns_single_action_array() -> None:
     assert a.shape == (dp.act_dim,)
 
 
+@pytest.mark.slow
 def test_act_seeds_reproduce_first_action() -> None:
     dp = _build_dp().eval()
     history = _fake_obs_history(dp)
@@ -237,6 +251,7 @@ def test_act_seeds_reproduce_first_action() -> None:
     assert np.allclose(a1, a2), f"seed 7 should reproduce; diff={np.abs(a1 - a2).max()}"
 
 
+@pytest.mark.slow
 def test_act_chunking_serves_from_cache_then_requeries() -> None:
     """With act_horizon=2, first act() triggers a denoise pass (fills 2 actions),
     second act() reads from cache, third act() triggers another denoise pass."""
@@ -269,6 +284,7 @@ def test_act_chunking_serves_from_cache_then_requeries() -> None:
     assert a1.shape == (dp.act_dim,) and a2.shape == (dp.act_dim,) and a3.shape == (dp.act_dim,)
 
 
+@pytest.mark.slow
 def test_load_restores_ema_state_dict(tmp_path) -> None:
     """Save a fake checkpoint with distinct agent vs. ema_agent weights, then
     load() and verify the EMA weights are what's restored."""
@@ -289,6 +305,7 @@ def test_load_restores_ema_state_dict(tmp_path) -> None:
         assert torch.allclose(p, torch.zeros_like(p)), "ema weights not loaded"
 
 
+@pytest.mark.slow
 def test_load_missing_ema_key_raises(tmp_path) -> None:
     dp = _build_dp()
     ckpt_path = tmp_path / "ckpt.pt"
