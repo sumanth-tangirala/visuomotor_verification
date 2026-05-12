@@ -267,3 +267,31 @@ def test_act_chunking_serves_from_cache_then_requeries() -> None:
     # 2 denoise passes total (one fills 2 actions, the third triggers a refill).
     assert len(calls) == 2, f"expected 2 get_action calls, got {len(calls)}"
     assert a1.shape == (dp.act_dim,) and a2.shape == (dp.act_dim,) and a3.shape == (dp.act_dim,)
+
+
+def test_load_restores_ema_state_dict(tmp_path) -> None:
+    """Save a fake checkpoint with distinct agent vs. ema_agent weights, then
+    load() and verify the EMA weights are what's restored."""
+    dp = _build_dp()
+    # Construct a fake "ema" state dict: zero out all params, save under 'ema_agent'.
+    agent_sd = {k: v.clone() for k, v in dp.state_dict().items()}
+    ema_sd = {k: torch.zeros_like(v) for k, v in dp.state_dict().items()}
+    ckpt_path = tmp_path / "ckpt.pt"
+    torch.save({"agent": agent_sd, "ema_agent": ema_sd}, ckpt_path)
+
+    # Mutate weights so load has something to overwrite.
+    with torch.no_grad():
+        for p in dp.parameters():
+            p.add_(1.0)
+    dp.load(ckpt_path)
+    # All learnable params should now be ~0 (from ema_sd).
+    for p in dp.parameters():
+        assert torch.allclose(p, torch.zeros_like(p)), "ema weights not loaded"
+
+
+def test_load_missing_ema_key_raises(tmp_path) -> None:
+    dp = _build_dp()
+    ckpt_path = tmp_path / "ckpt.pt"
+    torch.save({"agent": dp.state_dict()}, ckpt_path)  # missing 'ema_agent'
+    with pytest.raises(KeyError, match="ema_agent"):
+        dp.load(ckpt_path)

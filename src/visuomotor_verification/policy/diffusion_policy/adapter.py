@@ -244,4 +244,21 @@ class DiffusionPolicy(nn.Module, Policy):
         }
 
     def load(self, ckpt_path: Path) -> None:
-        raise NotImplementedError("filled in Task 9")
+        """Load EMA weights from a training checkpoint.
+
+        Checkpoints written by `trainer.train()` (and by the vendored upstream)
+        are dicts with keys 'agent' and 'ema_agent'. EMA weights are the
+        deployment weights for diffusion policy.
+
+        Raises:
+            KeyError: if the checkpoint dict has no 'ema_agent' key.
+            RuntimeError: from `load_state_dict(strict=True)` if the checkpoint's
+                architecture doesn't match the model (missing or unexpected keys,
+                or shape mismatches).
+        """
+        ckpt = torch.load(ckpt_path, map_location=self._device, weights_only=True)
+        if "ema_agent" not in ckpt:
+            raise KeyError(
+                f"checkpoint {ckpt_path} has no 'ema_agent' key; got keys: {list(ckpt.keys())}"
+            )
+        self.load_state_dict(ckpt["ema_agent"])
