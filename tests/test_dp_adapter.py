@@ -109,7 +109,9 @@ def test_compute_loss_returns_scalar() -> None:
 
 
 def test_compute_loss_backward() -> None:
-    """Loss must backprop and produce gradients on every learnable parameter."""
+    """Loss must backprop and produce gradients on every learnable parameter
+    (both visual_encoder and noise_pred_net).
+    """
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     dp = _build_dp(device).to(device)
     B = 2
@@ -120,8 +122,22 @@ def test_compute_loss_backward() -> None:
     action_seq = torch.randn(B, dp.pred_horizon, dp.act_dim, device=device).clamp(-1, 1)
     loss = dp.compute_loss(obs_seq, action_seq)
     loss.backward()
-    n_with_grad = sum(1 for p in dp.parameters() if p.grad is not None and p.grad.abs().sum() > 0)
-    n_total = sum(1 for p in dp.parameters() if p.requires_grad)
-    assert n_with_grad > 0
-    # Most params should get gradient
-    assert n_with_grad >= n_total // 2
+
+    # Every learnable parameter must have a gradient.
+    missing = [n for n, p in dp.named_parameters() if p.requires_grad and p.grad is None]
+    assert not missing, f"params without grad: {missing[:5]}{'...' if len(missing) > 5 else ''}"
+
+    # And both submodules (visual encoder + UNet) must receive non-zero gradients
+    # (regression sentinel against accidental detachment).
+    enc_grad = sum(
+        p.grad.abs().sum().item()
+        for p in dp.visual_encoder.parameters()
+        if p.grad is not None
+    )
+    unet_grad = sum(
+        p.grad.abs().sum().item()
+        for p in dp.noise_pred_net.parameters()
+        if p.grad is not None
+    )
+    assert enc_grad > 0, f"visual_encoder received zero gradient (sum={enc_grad})"
+    assert unet_grad > 0, f"noise_pred_net received zero gradient (sum={unet_grad})"
