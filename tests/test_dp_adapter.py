@@ -59,3 +59,36 @@ def test_diffusion_policy_has_expected_submodules() -> None:
     assert dp.act_horizon == 1
     assert dp.pred_horizon == 16
     assert dp.act_dim == 4
+
+
+def test_encode_obs_shape() -> None:
+    """encode_obs takes a dict {state, rgb} and returns (B, obs_horizon * (visual_dim + state_dim))."""
+    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    dp = _build_dp(device).to(device)
+    from visuomotor_verification.policy.diffusion_policy.adapter import _VISUAL_FEATURE_DIM
+    B = 2
+    obs_h = dp.obs_horizon
+    obs_seq = {
+        "state": torch.randn(B, obs_h, dp.obs_state_dim, device=device),
+        "rgb": (torch.rand(B, obs_h, 3, 64, 64, device=device) * 255).to(torch.uint8),
+    }
+    feat = dp.encode_obs(obs_seq, eval_mode=True)
+    expected_dim = obs_h * (_VISUAL_FEATURE_DIM + dp.obs_state_dim)
+    assert feat.shape == (B, expected_dim), f"got {feat.shape}, want (B={B}, {expected_dim})"
+
+
+def test_encode_obs_raises_when_no_visual_modality() -> None:
+    """include_rgb=False and include_depth=False is invalid — guard it explicitly."""
+    from visuomotor_verification.policy.diffusion_policy.adapter import DiffusionPolicy
+    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    dp = DiffusionPolicy(
+        obs_horizon=2, act_horizon=1, pred_horizon=16,
+        act_dim=4, obs_state_dim=9,
+        rgb_shape=(3, 64, 64),  # ignored but required arg
+        include_rgb=False, include_depth=False,
+        diffusion_step_embed_dim=64, unet_dims=[64, 128, 256],
+        n_groups=8, num_diffusion_iters=100, device=device,
+    ).to(device)
+    obs_seq = {"state": torch.randn(1, 2, 9, device=device)}
+    with pytest.raises(ValueError, match="include_rgb or include_depth"):
+        dp.encode_obs(obs_seq, eval_mode=True)

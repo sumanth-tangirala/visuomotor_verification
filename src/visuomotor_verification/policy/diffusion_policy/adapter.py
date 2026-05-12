@@ -105,6 +105,40 @@ class DiffusionPolicy(nn.Module, Policy):
         # Action chunk cache for Policy.act. List of (act_dim,) np.ndarrays.
         self._action_cache: list[np.ndarray] = []
 
+    def encode_obs(self, obs_seq: dict[str, torch.Tensor], eval_mode: bool) -> torch.Tensor:
+        """Encode (obs_horizon-length) observations to a conditioning vector.
+
+        Args:
+            obs_seq: dict with keys 'state' (B, H, S), 'rgb' (B, H, C, IH, IW) uint8,
+                optionally 'depth' (B, H, C, IH, IW).
+            eval_mode: if True, skip data augmentation (we don't define `aug` here;
+                upstream's optional aug isn't carried over in this PR).
+
+        Returns:
+            (B, H * (visual_feature_dim + obs_state_dim)) float tensor.
+
+        Mirrors upstream train_rgbd.py:Agent.encode_obs (lines 290-310).
+        """
+        img_seq = None
+        if self.include_rgb:
+            rgb = obs_seq["rgb"].float() / 255.0
+            img_seq = rgb
+        if self.include_depth:
+            depth = obs_seq["depth"].float() / 1024.0
+            img_seq = depth if img_seq is None else torch.cat([img_seq, depth], dim=2)
+
+        if img_seq is None:
+            raise ValueError(
+                "encode_obs requires at least one of include_rgb or include_depth to be True"
+            )
+        batch_size = img_seq.shape[0]
+        # (B, H, C, IH, IW) -> (B*H, C, IH, IW)
+        img_seq_flat = img_seq.flatten(end_dim=1)
+        visual_feature = self.visual_encoder(img_seq_flat)  # (B*H, D)
+        visual_feature = visual_feature.reshape(batch_size, self.obs_horizon, _VISUAL_FEATURE_DIM)
+        feature = torch.cat((visual_feature, obs_seq["state"]), dim=-1)
+        return feature.flatten(start_dim=1)
+
     # --- ABC stubs: filled in across Tasks 5-9 ----------------------------------
     def reset(self, *, seed: int | None = None) -> None:
         raise NotImplementedError("filled in Task 8")
